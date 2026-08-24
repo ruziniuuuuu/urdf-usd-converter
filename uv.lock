@@ -558,6 +558,19 @@ wheels = [
 ]
 
 [[package]]
+name = "trimesh"
+version = "5.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a8/45/5b9943631f265073bb96ca4cc2a9de05d151cd8c1a6896fcbaac132a1355/trimesh-5.0.0.tar.gz", hash = "sha256:0195003198baaf2550aebe612254ba2f01c385cec46c37ecc5beca8291f79a13", size = 864019, upload-time = "2026-08-01T00:05:25.042Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/37/82/19a03ba344ecb66ea8caab697b3059e0fbea576420f99945944c479caa78/trimesh-5.0.0-py3-none-any.whl", hash = "sha256:51ec67d7f9f74b918f2a695da5fd511b9c084e96307648ae83f45b58f13f8009", size = 745494, upload-time = "2026-08-01T00:05:23.172Z" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -586,6 +599,7 @@ dependencies = [
     { name = "numpy-stl" },
     { name = "pycollada" },
     { name = "tinyobjloader" },
+    { name = "trimesh" },
     { name = "usd-exchange" },
 ]
 
@@ -606,6 +620,7 @@ requires-dist = [
     { name = "numpy-stl", specifier = ">=3.2" },
     { name = "pycollada", specifier = ">=0.9.2" },
     { name = "tinyobjloader", specifier = ">=2.0.0rc13" },
+    { name = "trimesh", specifier = ">=4.6" },
     { name = "usd-exchange", specifier = ">=2.2.2" },
 ]
 

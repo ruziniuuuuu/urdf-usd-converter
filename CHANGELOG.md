@@ -1,3 +1,9 @@
+# Unreleased
+
+## Features
+
+- Added static GLB mesh conversion using trimesh, including node transforms, normals, UVs, and basic PBR material factors
+
 # 0.3.3
 
 ## Fixes
