@@ -2,7 +2,7 @@
 
 ## Features
 
-- Added static GLB mesh conversion using trimesh, including node transforms, normals, UVs, and basic PBR material factors
+- Added static GLB mesh conversion using trimesh, including node transforms, normals, UVs, PBR material factors, and embedded base-color, normal, emissive, and metallic-roughness textures
 
 # 0.3.3
 

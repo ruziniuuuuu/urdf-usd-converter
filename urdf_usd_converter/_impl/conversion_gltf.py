@@ -5,9 +5,10 @@ import pathlib
 import numpy as np
 import trimesh
 import usdex.core
+from PIL import Image
 from pxr import Gf, Tf, Usd, UsdGeom, Vt
 
-from .data import ConversionData
+from .data import ConversionData, Tokens
 from .material import store_mesh_material_reference
 from .material_data import MaterialData
 from .numpy import convert_vec2f_array, convert_vec3f_array
@@ -31,6 +32,8 @@ def convert_glb(prim: Usd.Prim, input_path: pathlib.Path, data: ConversionData) 
 
     material_names: dict[int, str] = {}
     used_material_names: set[str] = set()
+    texture_directory = pathlib.Path(data.content[Tokens.Contents].GetRootLayer().identifier).parent / Tokens.Textures
+    texture_paths: dict[int, pathlib.Path] = {}
     converted = 0
     for geometry_name, transform, mesh in nodes:
         if not isinstance(mesh, trimesh.Trimesh):
@@ -54,6 +57,8 @@ def convert_glb(prim: Usd.Prim, input_path: pathlib.Path, data: ConversionData) 
             mesh,
             material_names,
             used_material_names,
+            texture_directory,
+            texture_paths,
             data,
         )
         if material_name:
@@ -150,6 +155,8 @@ def _store_material(
     mesh: trimesh.Trimesh,
     material_names: dict[int, str],
     used_material_names: set[str],
+    texture_directory: pathlib.Path,
+    texture_paths: dict[int, pathlib.Path],
     data: ConversionData,
 ) -> str | None:
     material = getattr(mesh.visual, "material", None)
@@ -171,6 +178,9 @@ def _store_material(
 
     base_color = _color_factor(material.baseColorFactor, 4, [1.0, 1.0, 1.0, 1.0])
     emissive = _color_factor(material.emissiveFactor, 3, [0.0, 0.0, 0.0])
+    metallic = float(material.metallicFactor if material.metallicFactor is not None else 1.0)
+    roughness = float(material.roughnessFactor if material.roughnessFactor is not None else 1.0)
+    alpha_mode = material.alphaMode or "OPAQUE"
 
     material_data = MaterialData()
     material_data.mesh_file_path = input_path
@@ -178,11 +188,68 @@ def _store_material(
     material_data.material_name = material.name
     material_data.diffuse_color = usdex.core.linearToSrgb(Gf.Vec3f(*base_color[:3]))
     material_data.emissive_color = usdex.core.linearToSrgb(Gf.Vec3f(*emissive))
-    material_data.opacity = float(base_color[3])
-    material_data.metallic = float(material.metallicFactor if material.metallicFactor is not None else 1.0)
-    material_data.roughness = float(material.roughnessFactor if material.roughnessFactor is not None else 1.0)
+    material_data.opacity = 1.0 if alpha_mode == "OPAQUE" else float(base_color[3])
+    material_data.metallic = metallic
+    material_data.roughness = roughness
+    if alpha_mode == "MASK":
+        material_data.opacity_threshold = float(material.alphaCutoff if material.alphaCutoff is not None else 0.5)
+
+    base_color_texture = _extract_texture(material.baseColorTexture, texture_directory, texture_paths)
+    if base_color_texture:
+        material_data.diffuse_texture_path = base_color_texture
+        material_data.diffuse_texture_scale = Gf.Vec4f(*base_color)
+        if alpha_mode != "OPAQUE":
+            material_data.opacity_texture_path = base_color_texture
+            material_data.opacity_texture_channel = "a"
+            material_data.opacity_texture_scale = float(base_color[3])
+
+    metallic_roughness_texture = _extract_texture(material.metallicRoughnessTexture, texture_directory, texture_paths)
+    if metallic_roughness_texture:
+        material_data.roughness_texture_path = metallic_roughness_texture
+        material_data.roughness_texture_channel = "g"
+        material_data.roughness_texture_scale = roughness
+        material_data.metallic_texture_path = metallic_roughness_texture
+        material_data.metallic_texture_channel = "b"
+        material_data.metallic_texture_scale = metallic
+
+    material_data.normal_texture_path = _extract_texture(material.normalTexture, texture_directory, texture_paths)
+    material_data.emissive_texture_path = _extract_texture(material.emissiveTexture, texture_directory, texture_paths)
+    if material_data.emissive_texture_path:
+        material_data.emissive_texture_scale = Gf.Vec4f(emissive[0], emissive[1], emissive[2], 1.0)
+
     data.material_data_list.append(material_data)
     return name
+
+
+def _extract_texture(
+    image: Image.Image | None,
+    texture_directory: pathlib.Path,
+    texture_paths: dict[int, pathlib.Path],
+) -> pathlib.Path | None:
+    if image is None:
+        return None
+    if not isinstance(image, Image.Image):
+        Tf.Warn(f"Ignoring unsupported GLB texture type: {type(image).__name__}")
+        return None
+
+    key = id(image)
+    if key in texture_paths:
+        return texture_paths[key]
+
+    image_format = (image.format or "PNG").upper()
+    suffix = {"JPG": ".jpg", "JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}.get(image_format, ".png")
+    texture_directory.mkdir(parents=True, exist_ok=True)
+    texture_path = texture_directory / f"glb_texture_{len(tuple(texture_directory.iterdir())):03d}{suffix}"
+
+    source = getattr(image, "fp", None)
+    payload = source.getvalue() if hasattr(source, "getvalue") else None
+    if payload and image_format in {"JPEG", "PNG", "WEBP"}:
+        texture_path.write_bytes(payload)
+    else:
+        image.save(texture_path, format=image_format if image_format in {"JPEG", "PNG", "WEBP"} else "PNG")
+
+    texture_paths[key] = texture_path
+    return texture_path
 
 
 def _color_factor(value, size: int, default: list[float]) -> np.ndarray:

@@ -28,7 +28,7 @@ The implementation also leverages the following dependencies:
 - Pixar's OpenUSD python modules & native libraries (vendored via the `usd-exchange` wheel).
 - [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader), [pycollada](https://github.com/pycollada/pycollada), [numpy-stl](https://numpy-stl.readthedocs.io), and [trimesh](https://trimesh.org/) for parsing any mesh data referenced by the input URDF datasets.
 
-GLB support covers static triangle meshes, node transforms, vertex normals, UVs, and basic PBR material factors. Textures, animations, skins, morph targets, and glTF extensions are not supported.
+GLB support covers static triangle meshes, node transforms, vertex normals, UVs, PBR material factors, and embedded PNG/JPEG base-color, normal, emissive, and metallic-roughness textures. Animations, skins, morph targets, occlusion textures, alternate UV sets, non-default texture samplers, and glTF extensions are not supported.
 
 # Get Started
 

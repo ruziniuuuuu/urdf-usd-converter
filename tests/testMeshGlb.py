@@ -6,6 +6,7 @@ import numpy as np
 import trimesh
 import usdex.core
 import usdex.test
+from PIL import Image
 from pxr import Gf, Tf, Usd, UsdGeom, UsdShade
 
 import urdf_usd_converter
@@ -13,12 +14,22 @@ from tests.util.ConverterTestCase import ConverterTestCase
 
 
 def _write_glb(path: pathlib.Path):
+    base_color = Image.fromarray(np.full((2, 2, 4), [255, 128, 64, 128], dtype=np.uint8))
+    metallic_roughness = Image.fromarray(np.full((2, 2, 3), [0, 128, 64], dtype=np.uint8))
+    normal = Image.fromarray(np.full((2, 2, 3), [128, 128, 255], dtype=np.uint8))
+    emissive = Image.fromarray(np.full((2, 2, 3), [32, 64, 128], dtype=np.uint8))
     material = trimesh.visual.material.PBRMaterial(
         name="test_material",
         baseColorFactor=[64, 128, 191, 128],
+        baseColorTexture=base_color,
         metallicFactor=0.2,
+        metallicRoughnessTexture=metallic_roughness,
         roughnessFactor=0.4,
         emissiveFactor=[0.1, 0.2, 0.3],
+        emissiveTexture=emissive,
+        normalTexture=normal,
+        alphaMode="MASK",
+        alphaCutoff=0.25,
     )
     visual = trimesh.visual.texture.TextureVisuals(
         uv=np.asarray([[0, 0], [1, 0], [0, 1]], dtype=np.float64),
@@ -89,13 +100,29 @@ class TestMeshGlb(ConverterTestCase):
 
         material = UsdShade.Material(stage.GetPrimAtPath("/glb_import/Materials/test_material"))
         self.assertTrue(material)
-        self.assertTrue(Gf.IsClose(self.get_material_diffuse_color(material), Gf.Vec3f(64 / 255, 128 / 255, 191 / 255), 1e-6))
-        self.assertTrue(Gf.IsClose(self.get_material_emissive_color(material), Gf.Vec3f(0.1, 0.2, 0.3), 1e-6))
-        self.assertAlmostEqual(self.get_material_opacity(material), 128 / 255)
-        self.assertAlmostEqual(self.get_material_metallic(material), 0.2)
-        self.assertAlmostEqual(self.get_material_roughness(material), 0.4)
+        self.assertTrue(
+            Gf.IsClose(
+                self._texture_scale(material, "DiffuseTexture"),
+                Gf.Vec4f(64 / 255, 128 / 255, 191 / 255, 128 / 255),
+                1e-6,
+            )
+        )
+        self.assertEqual(self._texture_scale(material, "RoughnessTexture"), Gf.Vec4f(0.4))
+        self.assertEqual(self._texture_scale(material, "MetallicTexture"), Gf.Vec4f(0.2))
+        self.assertEqual(self._texture_scale(material, "OpacityTexture"), Gf.Vec4f(128 / 255))
+        self.assertEqual(self._texture_scale(material, "EmissiveTexture"), Gf.Vec4f(0.1, 0.2, 0.3, 1.0))
+        self.assertEqual(material.GetInput("opacityThreshold").Get(), 0.25)
         for mesh in meshes:
             self.check_material_binding(mesh.GetPrim(), material)
+
+        texture_dir = root / "output" / "Payload" / "Textures"
+        self.assertEqual(len(list(texture_dir.iterdir())), 4)
+        for input_name in ["diffuseColor", "emissiveColor", "normal", "roughness", "metallic", "opacity"]:
+            texture_path = self.get_material_texture_path(material, input_name)
+            self.assertTrue((root / "output" / "Payload" / texture_path).is_file())
+        self.assertEqual(self._connected_output(material, "roughness"), "g")
+        self.assertEqual(self._connected_output(material, "metallic"), "b")
+        self.assertEqual(self._connected_output(material, "opacity"), "a")
 
     def test_invalid_glb_uses_existing_mesh_warning(self):
         root = pathlib.Path(self.tmpDir())
@@ -113,3 +140,12 @@ class TestMeshGlb(ConverterTestCase):
             asset_path = urdf_usd_converter.Converter().convert(urdf_path, root / "output")
 
         self.assertIsValidUsd(Usd.Stage.Open(asset_path.path))
+
+    @staticmethod
+    def _connected_output(material: UsdShade.Material, input_name: str) -> str:
+        surface = usdex.core.computeEffectivePreviewSurfaceShader(material)
+        return str(surface.GetInput(input_name).GetConnectedSource()[1])
+
+    @staticmethod
+    def _texture_scale(material: UsdShade.Material, shader_name: str) -> Gf.Vec4f:
+        return UsdShade.Shader(material.GetPrim().GetChild(shader_name)).GetInput("scale").Get()
